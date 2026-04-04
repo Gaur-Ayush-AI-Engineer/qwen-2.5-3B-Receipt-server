@@ -4,4 +4,3 @@ __pycache__/
 *.egg-info/
 .env
 benchmark/results_*.csv
-benchmark_results.md

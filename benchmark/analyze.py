@@ -49,7 +49,7 @@ def safe_float(val: str) -> float:
         return 0.0
 
 
-def build_table(rows: list[dict], server_metrics: dict | None) -> str:
+def build_table(rows: list[dict], server_metrics: dict | None, concurrency_label: str = "?") -> str:
     """
     Build a Markdown table from the locust stats rows.
 
@@ -87,9 +87,7 @@ def build_table(rows: list[dict], server_metrics: dict | None) -> str:
     if server_metrics:
         tps_str = f"{server_metrics.get('mean_tokens_per_second', 0):.1f}"
 
-    # We don't know concurrency from the CSV alone; label it from filename
-    # or let the user patch the markdown manually.
-    concurrency = "?"
+    concurrency = concurrency_label
 
     header = "| Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Req/sec | Tokens/sec |"
     sep    = "|-------------|----------|----------|----------|---------|------------|"
@@ -106,6 +104,7 @@ def main():
     parser.add_argument("--csv", required=True, help="Path to locust _stats.csv file")
     parser.add_argument("--server", default=None, help="Server URL to fetch live metrics")
     parser.add_argument("--output", default="benchmark_results.md", help="Output markdown file")
+    parser.add_argument("--concurrency", default="?", help="Concurrency level label for the table")
     args = parser.parse_args()
 
     if not Path(args.csv).exists():
@@ -117,6 +116,8 @@ def main():
         print("Error: CSV file is empty or malformed.", file=sys.stderr)
         sys.exit(1)
 
+    concurrency_label = args.concurrency
+
     server_metrics = None
     if args.server:
         server_metrics = fetch_server_metrics(args.server)
@@ -124,7 +125,7 @@ def main():
             print(f"Warning: could not reach {args.server}/metrics — tokens/sec will be N/A")
 
     print("\n=== Benchmark Results ===\n")
-    table = build_table(rows, server_metrics)
+    table = build_table(rows, server_metrics, concurrency_label=concurrency_label)
     print(table)
 
     # Append to benchmark_results.md so multiple runs accumulate

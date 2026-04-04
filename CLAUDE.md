@@ -35,7 +35,7 @@ Hardware target: M3 Pro 32GB, MLX only.
 
 - [x] All files written and syntax-verified
 - [x] Smoke test passes (15/15 checks) with MockModelWrapper
-- [ ] Smoke test not yet run with real MLX model (requires `pip install mlx-lm`)
+- [x] Smoke test passes with real MLX model (`largetrader/qwen2.5-3b-receipt-extraction-fused` weights uploaded and verified)
 - [ ] Benchmark table in README.md has TBD placeholders — fill after running locust
 
 ---

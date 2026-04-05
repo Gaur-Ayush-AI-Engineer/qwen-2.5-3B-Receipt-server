@@ -119,6 +119,8 @@ Run with Locust against `/extract` (75%) and `/extract/batch` (25%) endpoints.
 
 **Reading the table**: E2E latency (p50→p99) grows sharply with concurrency — that's queue wait time, not slower inference. The flat HW tok/s column confirms the model itself isn't slowing down; requests are just waiting longer for the `asyncio.Lock`.
 
+**Req/sec is not a meaningful scaling metric for this server.** The `asyncio.Lock` bounds throughput to ~1 request per inference duration regardless of concurrency. Use **HW tok/s** and **Sys tok/s** to evaluate throughput.
+
 ---
 
 ## What vLLM Would Give Us

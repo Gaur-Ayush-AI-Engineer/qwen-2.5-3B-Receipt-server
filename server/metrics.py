@@ -32,48 +32,75 @@ class MetricsTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._latencies_ms: list[float] = []
-        self._tokens_per_second: list[float] = []
+        self._ttft_ms: list[float] = []
+        self._tpot_ms: list[float] = []
         self._parse_successes: list[bool] = []
+        self._total_output_tokens: int = 0
         self._start_time: float = time.monotonic()
 
     def record(
         self,
         latency_ms: float,
         tokens_generated: int,
+        ttft_ms: float,
+        tpot_ms: float,
         parse_success: bool,
     ) -> None:
-        tps = (tokens_generated / latency_ms * 1000) if latency_ms > 0 else 0.0
         with self._lock:
             self._latencies_ms.append(latency_ms)
-            self._tokens_per_second.append(tps)
+            self._ttft_ms.append(ttft_ms)
+            self._tpot_ms.append(tpot_ms)
             self._parse_successes.append(parse_success)
+            self._total_output_tokens += tokens_generated
 
     def reset(self) -> None:
         with self._lock:
             self._latencies_ms.clear()
-            self._tokens_per_second.clear()
+            self._ttft_ms.clear()
+            self._tpot_ms.clear()
             self._parse_successes.clear()
+            self._total_output_tokens = 0
             self._start_time = time.monotonic()
 
     def summary(self) -> dict:
         with self._lock:
             n = len(self._latencies_ms)
+            uptime = time.monotonic() - self._start_time
             if n == 0:
                 return {
                     "total_requests": 0,
                     "p50_latency_ms": 0.0,
                     "p95_latency_ms": 0.0,
                     "p99_latency_ms": 0.0,
+                    "mean_ttft_ms": 0.0,
+                    "p95_ttft_ms": 0.0,
+                    "mean_tpot_ms": 0.0,
                     "mean_tokens_per_second": 0.0,
+                    "system_throughput_tps": 0.0,
                     "parse_success_rate": 0.0,
                 }
             sorted_lat = sorted(self._latencies_ms)
+            sorted_ttft = sorted(self._ttft_ms)
+
+            # TPOT → tokens/sec: exclude zero values (requests with 0 or 1 tokens)
+            valid_tpot = [t for t in self._tpot_ms if t > 0]
+            mean_tpot = sum(valid_tpot) / len(valid_tpot) if valid_tpot else 0.0
+            # tokens/sec = 1000ms / ms-per-token
+            mean_tps = (1000.0 / mean_tpot) if mean_tpot > 0 else 0.0
+
+            # System throughput: total tokens produced / total wall-clock time
+            system_tps = self._total_output_tokens / uptime if uptime > 0 else 0.0
+
             return {
                 "total_requests": n,
                 "p50_latency_ms": self._percentile(sorted_lat, 50),
                 "p95_latency_ms": self._percentile(sorted_lat, 95),
                 "p99_latency_ms": self._percentile(sorted_lat, 99),
-                "mean_tokens_per_second": sum(self._tokens_per_second) / n,
+                "mean_ttft_ms": sum(self._ttft_ms) / n,
+                "p95_ttft_ms": self._percentile(sorted_ttft, 95),
+                "mean_tpot_ms": mean_tpot,
+                "mean_tokens_per_second": round(mean_tps, 2),
+                "system_throughput_tps": round(system_tps, 2),
                 "parse_success_rate": sum(self._parse_successes) / n,
             }
 

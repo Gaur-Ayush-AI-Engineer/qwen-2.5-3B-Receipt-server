@@ -26,7 +26,8 @@ Hardware target: M3 Pro 32GB, MLX only.
 | `server/main.py` | FastAPI app. Five endpoints: /extract, /extract/batch, /health, /metrics, /metrics/reset. |
 | `scripts/smoke_test.py` | End-to-end sanity check. Run after any server change. |
 | `benchmark/locustfile.py` | Locust load test. Four OCR samples, /extract and /extract/batch tasks. |
-| `benchmark/analyze.py` | Parses locust CSV → Markdown table. Optionally fetches live tokens/sec from /metrics. |
+| `benchmark/analyze.py` | Parses locust CSV → Markdown table. Fetches TTFT/TPOT/HW tok/s/Sys tok/s from /metrics. |
+| `benchmark/run_all.sh` | Runs full ramp (u1→u5→u10→u20), resets metrics between runs, logs to benchmark_run.log. |
 | `requirements.txt` | fastapi, uvicorn, pydantic>=2.6, mlx-lm>=0.13, locust |
 
 ---
@@ -36,7 +37,7 @@ Hardware target: M3 Pro 32GB, MLX only.
 - [x] All files written and syntax-verified
 - [x] Smoke test passes (15/15 checks) with MockModelWrapper
 - [x] Smoke test passes with real MLX model (`largetrader/qwen2.5-3b-receipt-extraction-fused` weights uploaded and verified)
-- [ ] Benchmark table in README.md has TBD placeholders — fill after running locust
+- [x] Benchmark table in README.md filled with real numbers (u1/u5/u10/u20)
 
 ---
 

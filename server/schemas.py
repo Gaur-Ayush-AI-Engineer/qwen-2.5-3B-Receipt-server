@@ -40,7 +40,9 @@ class ExtractionResponse(BaseModel):
     extracted: ExtractedFields
     raw_output: str
     parse_success: bool
-    latency_ms: float
+    latency_ms: float      # end-to-end wall time including queue wait
+    ttft_ms: float         # time to first token (prefill latency)
+    tpot_ms: float         # time per output token (decode speed)
     tokens_generated: int
 
 
@@ -74,5 +76,9 @@ class MetricsResponse(BaseModel):
     p50_latency_ms: float
     p95_latency_ms: float
     p99_latency_ms: float
-    mean_tokens_per_second: float
+    mean_ttft_ms: float           # mean prefill latency
+    p95_ttft_ms: float            # tail prefill latency
+    mean_tpot_ms: float           # true decode speed (hardware)
+    mean_tokens_per_second: float # 1000 / mean_tpot_ms — hardware tok/s
+    system_throughput_tps: float  # total_tokens / wall_clock (system-level)
     parse_success_rate: float

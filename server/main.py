@@ -78,11 +78,17 @@ async def extract(req: ExtractionRequest):
     Blocks until the asyncio.Lock is acquired (queues behind any in-flight request).
     """
     t0 = time.monotonic()
-    raw, tokens = await app.state.model.infer(req.ocr_text)
+    raw, tokens, ttft_ms, tpot_ms = await app.state.model.infer(req.ocr_text)
     latency_ms = (time.monotonic() - t0) * 1000
 
     extracted, success = _parse_extracted(raw)
-    tracker.record(latency_ms=latency_ms, tokens_generated=tokens, parse_success=success)
+    tracker.record(
+        latency_ms=latency_ms,
+        tokens_generated=tokens,
+        ttft_ms=ttft_ms,
+        tpot_ms=tpot_ms,
+        parse_success=success,
+    )
 
     return ExtractionResponse(
         request_id=req.request_id,
@@ -90,6 +96,8 @@ async def extract(req: ExtractionRequest):
         raw_output=raw,
         parse_success=success,
         latency_ms=round(latency_ms, 2),
+        ttft_ms=round(ttft_ms, 2),
+        tpot_ms=round(tpot_ms, 2),
         tokens_generated=tokens,
     )
 
@@ -121,12 +129,16 @@ async def extract_batch(batch: BatchExtractionRequest):
 
     for req in batch.requests:
         t0 = time.monotonic()
-        raw, tokens = await app.state.model.infer(req.ocr_text)
+        raw, tokens, ttft_ms, tpot_ms = await app.state.model.infer(req.ocr_text)
         latency_ms = (time.monotonic() - t0) * 1000
 
         extracted, success = _parse_extracted(raw)
         tracker.record(
-            latency_ms=latency_ms, tokens_generated=tokens, parse_success=success
+            latency_ms=latency_ms,
+            tokens_generated=tokens,
+            ttft_ms=ttft_ms,
+            tpot_ms=tpot_ms,
+            parse_success=success,
         )
 
         results.append(
@@ -136,6 +148,8 @@ async def extract_batch(batch: BatchExtractionRequest):
                 raw_output=raw,
                 parse_success=success,
                 latency_ms=round(latency_ms, 2),
+                ttft_ms=round(ttft_ms, 2),
+                tpot_ms=round(tpot_ms, 2),
                 tokens_generated=tokens,
             )
         )

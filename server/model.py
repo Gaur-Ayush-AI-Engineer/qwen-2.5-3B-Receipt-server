@@ -113,8 +113,8 @@ class MockModelWrapper:
 
     model_loaded: bool = True
 
-    def infer_sync(self, prompt: str) -> tuple[str, int]:
-        """Return (json_string, token_count). Blocks for MOCK_LATENCY_MS."""
+    def infer_sync(self, prompt: str) -> tuple[str, int, float, float]:
+        """Return (json_string, token_count, ttft_ms, tpot_ms). Blocks for MOCK_LATENCY_MS."""
         time.sleep(MOCK_LATENCY_MS / 1000)
         fake = json.dumps(
             {
@@ -124,7 +124,10 @@ class MockModelWrapper:
                 "total": "99.99",
             }
         )
-        return fake, 42
+        # Mock splits latency 30% prefill / 70% decode across 42 tokens
+        ttft_ms = MOCK_LATENCY_MS * 0.3
+        tpot_ms = (MOCK_LATENCY_MS * 0.7) / 41  # time per decode step
+        return fake, 42, ttft_ms, tpot_ms
 
 
 class MLXModelWrapper:
@@ -156,22 +159,56 @@ class MLXModelWrapper:
             self._lock = asyncio.Lock()
         return self._lock
 
-    def infer_sync(self, prompt: str) -> tuple[str, int]:
+    def infer_sync(self, prompt: str) -> tuple[str, int, float, float]:
         """
         Synchronous inference — called from a ThreadPoolExecutor thread,
         never directly from the event loop.
-        Returns (raw_output_string, token_count).
+        Returns (raw_output_string, token_count, ttft_ms, tpot_ms).
+
+        Uses stream_generate() to get real per-token timing:
+          TTFT  = time from call start → first token emitted (prefill latency)
+          TPOT  = average time between tokens during decode phase
+                = (last_token_time - first_token_time) / (output_tokens - 1)
+
+        Both are true hardware measurements, not estimates.
         """
-        output = mlx_generate(
+        from mlx_lm import stream_generate as mlx_stream_generate
+
+        output_parts: list[str] = []
+        first_token_time: float | None = None
+        last_token_time: float = 0.0
+        output_tokens: int = 0
+
+        t_start = time.monotonic()
+
+        for response in mlx_stream_generate(
             self._model,
             self._tokenizer,
             prompt=prompt,
             max_tokens=MAX_TOKENS,
-        )
-        token_count = len(self._tokenizer.encode(output))
-        return output, token_count
+        ):
+            now = time.monotonic()
+            if first_token_time is None:
+                first_token_time = now
+            last_token_time = now
+            output_parts.append(response.text)
+            output_tokens += 1
 
-    async def infer(self, ocr_text: str) -> tuple[str, int]:
+        output = "".join(output_parts)
+
+        if first_token_time is None:
+            return output, 0, 0.0, 0.0
+
+        ttft_ms = (first_token_time - t_start) * 1000
+        tpot_ms = (
+            (last_token_time - first_token_time) * 1000 / (output_tokens - 1)
+            if output_tokens > 1
+            else 0.0
+        )
+
+        return output, output_tokens, ttft_ms, tpot_ms
+
+    async def infer(self, ocr_text: str) -> tuple[str, int, float, float]:
         """
         Async entry point called by FastAPI route handlers.
 
@@ -182,10 +219,10 @@ class MLXModelWrapper:
         prompt = _build_prompt(ocr_text)
         loop = asyncio.get_event_loop()
         async with self._get_lock():
-            raw, tokens = await loop.run_in_executor(
+            raw, tokens, ttft_ms, tpot_ms = await loop.run_in_executor(
                 self._executor, self.infer_sync, prompt
             )
-        return raw, tokens
+        return raw, tokens, ttft_ms, tpot_ms
 
 
 class MockAsyncWrapper:
@@ -195,7 +232,7 @@ class MockAsyncWrapper:
     _mock = MockModelWrapper()
     _executor = ThreadPoolExecutor(max_workers=1)
 
-    async def infer(self, ocr_text: str) -> tuple[str, int]:
+    async def infer(self, ocr_text: str) -> tuple[str, int, float, float]:
         prompt = _build_prompt(ocr_text)
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(

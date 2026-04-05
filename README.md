@@ -87,6 +87,8 @@ curl -X POST http://localhost:8000/extract \
   "raw_output": "{\"company\": \"SUPERMART\", ...}",
   "parse_success": true,
   "latency_ms": 847.3,
+  "ttft_ms": 610.2,
+  "tpot_ms": 49.1,
   "tokens_generated": 38
 }
 ```
@@ -95,23 +97,27 @@ curl -X POST http://localhost:8000/extract \
 
 ## Benchmark Results
 
-Run with Locust at each concurrency level:
+Hardware: Apple M3 Pro 32GB · Model: `largetrader/qwen2.5-3b-receipt-extraction-fused` (3B params, MLX)  
+Run with Locust against `/extract` (75%) and `/extract/batch` (25%) endpoints.
 
 ```bash
-locust -f benchmark/locustfile.py --host http://localhost:8000 \
-       --headless -u 1 -r 1 --run-time 90s --csv benchmark/results_u1
-python benchmark/analyze.py --csv benchmark/results_u1_stats.csv \
-                             --server http://localhost:8000
+./benchmark/run_all.sh   # runs all concurrency levels and logs results
 ```
 
-| Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Req/sec | Tokens/sec |
-|-------------|----------|----------|----------|---------|------------|
-| 1           | TBD      | TBD      | TBD      | TBD     | TBD        |
-| 5           | TBD      | TBD      | TBD      | TBD     | TBD        |
-| 10          | TBD      | TBD      | TBD      | TBD     | TBD        |
-| 20          | TBD      | TBD      | TBD      | TBD     | TBD        |
+| Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Req/sec | TTFT (ms) | TPOT (ms) | HW tok/s | Sys tok/s |
+|-------------|----------|----------|----------|---------|-----------|-----------|----------|-----------|
+| 1           | 3800     | 11000    | 11000    | 0.19    | 610       | 49.1      | 20.4     | 11.4      |
+| 5           | 13000    | 45000    | 66000    | 0.30    | 443       | 49.2      | 20.4     | 17.8      |
+| 10          | 35000    | 98000    | 112000   | 0.18    | 470       | 49.9      | 20.1     | 17.4      |
+| 20          | 48000    | 86000    | 89000    | 0.21    | 433       | 49.6      | 20.2     | 17.6      |
 
-**Reading the table**: p50→p99 gap tells you about variance. A gap of 2-10x under high concurrency is normal (queue buildup). A gap > 10x suggests a systemic problem — memory pressure, GC pause, or a pathologically long input hitting the decode length limit.
+**Column definitions**:
+- **TTFT** — Time To First Token: prefill latency, how long the model takes to process the input prompt before generating any output.
+- **TPOT** — Time Per Output Token: true decode speed (~49ms/token = ~20 tok/s). This is a hardware measurement — notice it stays flat across all concurrency levels.
+- **HW tok/s** — `1000 / TPOT`: the model's actual generation rate. Constant at ~20 tok/s regardless of queue depth, proving the GPU runs at full speed.
+- **Sys tok/s** — `total_output_tokens / wall_clock_time`: system-level throughput. This is how vLLM, TGI, and SGLang report throughput.
+
+**Reading the table**: E2E latency (p50→p99) grows sharply with concurrency — that's queue wait time, not slower inference. The flat HW tok/s column confirms the model itself isn't slowing down; requests are just waiting longer for the `asyncio.Lock`.
 
 ---
 

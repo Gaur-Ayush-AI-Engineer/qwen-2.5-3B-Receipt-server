@@ -83,15 +83,24 @@ def build_table(rows: list[dict], server_metrics: dict | None, concurrency_label
     p99 = safe_float(agg.get("99%", 0))
     rps = safe_float(agg.get("Requests/s", 0))
 
-    tps_str = "N/A"
+    ttft_str = "N/A"
+    tpot_str = "N/A"
+    hw_tps_str = "N/A"
+    sys_tps_str = "N/A"
     if server_metrics:
-        tps_str = f"{server_metrics.get('mean_tokens_per_second', 0):.1f}"
+        ttft_str = f"{server_metrics.get('mean_ttft_ms', 0):.0f}"
+        tpot_str = f"{server_metrics.get('mean_tpot_ms', 0):.1f}"
+        hw_tps_str = f"{server_metrics.get('mean_tokens_per_second', 0):.1f}"
+        sys_tps_str = f"{server_metrics.get('system_throughput_tps', 0):.1f}"
 
     concurrency = concurrency_label
 
-    header = "| Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Req/sec | Tokens/sec |"
-    sep    = "|-------------|----------|----------|----------|---------|------------|"
-    row    = f"| {concurrency:^11} | {p50:^8.0f} | {p95:^8.0f} | {p99:^8.0f} | {rps:^7.2f} | {tps_str:^10} |"
+    header = "| Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Req/sec | TTFT (ms) | TPOT (ms) | HW tok/s | Sys tok/s |"
+    sep    = "|-------------|----------|----------|----------|---------|-----------|-----------|----------|-----------|"
+    row    = (
+        f"| {concurrency:^11} | {p50:^8.0f} | {p95:^8.0f} | {p99:^8.0f} | {rps:^7.2f} |"
+        f" {ttft_str:^9} | {tpot_str:^9} | {hw_tps_str:^8} | {sys_tps_str:^9} |"
+    )
 
     lines.append(header)
     lines.append(sep)
